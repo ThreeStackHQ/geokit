@@ -13,15 +13,25 @@ interface WebhookPayload {
 const RETRY_DELAYS = [0, 5000, 30000];
 
 // SEC-008: Defense-in-depth SSRF check at delivery time
+// BUG-001 FIX: Node.js URL parser returns IPv6 with brackets e.g. "[::1]",
+// so we must strip brackets before comparing.
 function isSafeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
+    // Strip IPv6 brackets for bare comparison
+    const hostBare = hostname.startsWith("[") && hostname.endsWith("]")
+      ? hostname.slice(1, -1)
+      : hostname;
     return !(
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||
       hostname === "0.0.0.0" ||
-      hostname === "::1" ||
+      hostBare === "::1" ||
+      hostBare.startsWith("::ffff:127.") ||
+      hostBare.startsWith("fe80:") ||
+      hostBare.startsWith("fc00:") ||
+      hostBare.startsWith("fd") ||
       hostname.startsWith("10.") ||
       hostname.startsWith("172.") ||
       hostname.startsWith("192.168.") ||
