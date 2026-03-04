@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { z } from "zod";
 import { getDb, users, workspaces, workspaceApiKeys, subscriptions, eq } from "@geokit/db";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,18 @@ const signupSchema = z.object({
 
 export async function POST(request: Request): Promise<NextResponse> {
   try {
+    // SEC-004: Rate limit signup — 5 per 15 minutes per IP
+    const forwarded = request.headers.get("x-forwarded-for");
+    const realIp = request.headers.get("x-real-ip");
+    const clientIp = forwarded?.split(",")[0]?.trim() ?? realIp ?? "unknown";
+    const { allowed } = checkRateLimit(`signup:${clientIp}`, 5, 15 * 60_000);
+    if (!allowed) {
+      return NextResponse.json(
+        { status: "fail", message: "Too many signup attempts. Try again later.", code: "RATE_LIMITED" },
+        { status: 429 }
+      );
+    }
+
     const body: unknown = await request.json();
     const result = signupSchema.safeParse(body);
 

@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { getDb, sql } from "@geokit/db";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
+function timingSafeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 export async function GET(request: Request): Promise<NextResponse> {
   try {
-    const cronSecret = request.headers.get("authorization");
-    if (cronSecret !== `Bearer ${process.env.CRON_SECRET}`) {
+    const cronSecret = request.headers.get("authorization") ?? "";
+    if (!timingSafeCompare(cronSecret, `Bearer ${env.CRON_SECRET}`)) {
       return NextResponse.json(
         { status: "fail", message: "Unauthorized" },
         { status: 401 }

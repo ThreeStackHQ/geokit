@@ -20,5 +20,5 @@ export function getDb() {
 export type Database = ReturnType<typeof getDb>;
 
 export * from "./schema";
-export { eq, and, or, desc, asc, sql, gte, lte, lt, count, inArray } from "drizzle-orm";
+export { eq, and, or, desc, asc, sql, gte, lte, lt, count, inArray, isNull } from "drizzle-orm";
 export type { InferSelectModel } from "drizzle-orm";

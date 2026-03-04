@@ -12,10 +12,34 @@ interface WebhookPayload {
 
 const RETRY_DELAYS = [0, 5000, 30000];
 
+// SEC-008: Defense-in-depth SSRF check at delivery time
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return !(
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1" ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("172.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("169.254.") ||
+      hostname.endsWith(".internal") ||
+      hostname === "metadata.google.internal"
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function sendWebhook(
   endpoint: WebhookEndpoint,
   payload: WebhookPayload
 ): Promise<boolean> {
+  if (!isSafeUrl(endpoint.url)) return false;
+
   const body = JSON.stringify(payload);
   const signature = crypto
     .createHmac("sha256", endpoint.secret)

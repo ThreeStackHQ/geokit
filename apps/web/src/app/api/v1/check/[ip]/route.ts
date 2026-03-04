@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import net from "net";
 import { lookupIP } from "@geokit/geoip";
 import { validateApiKey } from "@/lib/api-key";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isWithinDailyQuota, incrementDailyQuota } from "@/lib/tier";
 import { getDb, blocklists, lookupLogs, eq } from "@geokit/db";
 import { deliverWebhook } from "@/lib/webhooks";
 
@@ -38,7 +40,25 @@ export async function GET(
       );
     }
 
+    // SEC-001: Daily quota enforcement
+    const withinQuota = await isWithinDailyQuota(apiKey.workspaceId);
+    if (!withinQuota) {
+      return NextResponse.json(
+        { status: "fail", message: "Daily quota exceeded", code: "QUOTA_EXCEEDED" },
+        { status: 429, headers: corsHeaders }
+      );
+    }
+
     const ip = params.ip;
+
+    // SEC-003: Validate IP address
+    if (net.isIP(ip) === 0) {
+      return NextResponse.json(
+        { status: "fail", message: "Invalid IP address", code: "BAD_REQUEST" },
+        { status: 400, headers: corsHeaders }
+      );
+    }
+
     const db = getDb();
 
     // Run geoip lookup and blocklist fetch in parallel
@@ -82,7 +102,7 @@ export async function GET(
       }
     }
 
-    // Log in background
+    // Log lookup and increment quota in background
     setImmediate(() => {
       db.insert(lookupLogs)
         .values({
@@ -95,6 +115,9 @@ export async function GET(
         })
         .then(() => {})
         .catch(() => {});
+
+      // SEC-001: Increment daily quota
+      incrementDailyQuota(apiKey.workspaceId).catch(() => {});
     });
 
     // Fire webhook if blocked
